@@ -1,8 +1,8 @@
-# Read-only API and MCP
+# API and MCP
 
 Workspace owners and admins can create keys at **API & MCP** (`/integrations`).
-The UI offers 30, 60 or 90 days (default: 30). The API accepts whole days from
-1 to 90. Existing keys are never extended. Copy the token at creation; only its
+Each key has one or more scopes and lives 30, 60, 90, 180 or 365 days
+(default: 30). Existing keys are never extended. Copy the token at creation; only its
 SHA-256 hash is stored. Revocation takes effect on subsequent authenticated requests.
 Use HTTPS and never put a token in a URL, source control, screenshots or prompts.
 Keys belong to the workspace, not their creator, and remain valid until expiry,
@@ -15,10 +15,25 @@ npm run db:migrate
 npm run db:generate
 ```
 
-The additive migration only creates `ServiceKey`; it does not change campaigns,
-authentication providers or worker behavior. `REDIS_URL` is required for service
+The additive migrations create `ServiceKey` and add two nullable columns to
+`Automation` (`createdByServiceKeyId`, `lastEditedByServiceKeyId`); they do not
+change existing campaigns, authentication providers or worker behavior. `REDIS_URL` is required for service
 requests. Each key allows 120 requests per fixed 60-second window. Redis failures
 reject requests with 503 instead of disabling the limiter.
+
+## Scopes
+
+| Scope | Allows |
+|---|---|
+| `campaigns:read` | List and read campaigns, campaign stats and recent posts. |
+| `campaigns:write` | Create campaigns (always paused) and edit **paused** campaigns. |
+| `campaigns:activate` | Switch campaigns on or off, and edit campaigns that are live. |
+
+A key with `campaigns:write` but not `campaigns:activate` can prepare campaigns
+that a person then switches on in the panel; switching a campaign on there is
+the approval. Keys with `campaigns:activate` can start sending DMs without
+anyone looking, so give that scope only to clients you would trust with the
+panel.
 
 ## MCP clients
 
@@ -43,8 +58,8 @@ Tools (all read-only; scope `campaigns:read`):
   link requests. These are **not** unique recipients or CRM conversions.
 
 Example safe verification: ask your client to list campaigns, then read one
-campaign's destination URLs without changing anything. There are no mutation,
-activation, publish, account-token or messaging tools in this contribution.
+campaign's destination URLs without changing anything. MCP has no write tools;
+campaign writes are REST only.
 
 ## REST
 
@@ -54,7 +69,14 @@ Use the same Bearer header:
 GET /api/v1/campaigns
 GET /api/v1/campaigns?id=<campaign-id>
 GET /api/v1/campaigns?id=<campaign-id>&stats=1
+GET /api/v1/posts?limit=25
 ```
+
+`/api/v1/posts` returns the account's latest posts and reels (`limit` 1-50,
+default 25; `instagramAccountId` optional) with `id`, `caption`, `permalink`,
+`timestamp`, `media_type` and `media_product_type`, so a client can bind a
+campaign to a post by `id`. When Instagram fails it answers 502 without
+Instagram's message.
 
 Responses use `{ "data": ... }`. Lists are capped at 100; pagination is not yet
 provided. Detail responses use an explicit safe projection: no provider tokens,
@@ -66,6 +88,54 @@ Admin key management uses session authentication at `/api/integrations/keys`:
 GET lists metadata (never hashes/tokens), POST creates a key, DELETE with `?id=`
 revokes it. A supplied Origin must match `NEXTAUTH_URL` (or the request origin).
 JSON request bodies are bounded to 64 KiB including streamed/chunked requests.
+
+## Writing campaigns
+
+```text
+POST  /api/v1/campaigns              campaigns:write
+PATCH /api/v1/campaigns?id=<id>      campaigns:write (+ campaigns:activate, see below)
+```
+
+Bodies take the same fields and rules as the panel's campaign form: `name`,
+`dmMessage`, a trigger (`matchAnyPost`, `pendingNextReel`, or `postId` with
+`postUrl`), `keywords` (up to 10) or `matchAnyWord`, `linkButtonLabel`,
+`trackedDestinationUrl`, `secondaryDestinationUrl` + `secondaryButtonLabel` (a
+second DM button), `publicReplyEnabled` + `publicReplyMessages`, the opening
+DM, follow gate and follow-up fields, and `instagramAccountId` (default: the
+most recently connected account). Unknown fields are rejected with 400 and
+`details`.
+
+- A created campaign is always paused; `isActive` is not accepted on create.
+- `isActive` in a PATCH needs `campaigns:activate`.
+- A key without `campaigns:activate` cannot edit a live campaign (409); pause it
+  in the panel first.
+- An any-post campaign cannot use a keyword (compared like the matcher: case,
+  spacing, symbols and Latin accents ignored) that another any-post campaign of
+  the same account already uses, paused or not. The answer is 409:
+
+```json
+{ "error": "Keyword already used by another any-post campaign",
+  "conflicts": [{ "keyword": "hunter", "campaign": { "id": "...", "name": "...", "isActive": false } }] }
+```
+
+Instagram allows one private reply per comment and campaigns are tried oldest
+first, so other overlaps (an any-post campaign and a post campaign with the
+same word) are allowed but only one of them sends the DM. Every write answers
+`{ "data": <campaign>, "keywordOverlaps": [...] }`, where each overlap lists the
+campaigns that answer that keyword on the same comments, oldest first, and the
+`winner` whose DM goes out.
+
+```sh
+curl -sS -X POST https://YOUR-DOMAIN/api/v1/campaigns \
+  -H "Authorization: Bearer $OPENREPLY_KEY" -H "Content-Type: application/json" \
+  -d '{"name":"Hunter","matchAnyPost":true,"keywords":["HUNTER"],
+       "dmMessage":"Here is the link","linkButtonLabel":"Shop",
+       "trackedDestinationUrl":"https://example.com/hunter"}'
+```
+
+Campaigns record which key created and last edited them; the panel shows
+"API · <key name>" on campaigns a key created, and a save in the panel clears
+the last API editor.
 
 ## Verification
 
