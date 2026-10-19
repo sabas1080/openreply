@@ -85,7 +85,7 @@ function sharedKeyword(
   );
   return keyword === undefined
     ? { shared: false, keyword: null }
-    : { shared: true, keyword };
+    : { shared: true, keyword: keyword.trim() };
 }
 
 function canFireOnSameComment(a: CampaignTrigger, b: CampaignTrigger) {
@@ -95,6 +95,9 @@ function canFireOnSameComment(a: CampaignTrigger, b: CampaignTrigger) {
   return Boolean(a.postId) && a.postId === b.postId;
 }
 
+// The worker orders by createdAt only; two campaigns saved in the same
+// millisecond have no defined order there, so the id tie-break only keeps
+// this report stable.
 function byWorkerOrder(a: CampaignTrigger, b: CampaignTrigger) {
   const time = a.createdAt.getTime() - b.createdAt.getTime();
   if (time !== 0) return time;
@@ -153,7 +156,7 @@ export function describeKeywordOverlaps(
     const keyword =
       key === null
         ? null
-        : candidate.keywords.find((k) => normalizeKeyword(k) === key) ?? key;
+        : candidate.keywords.find((k) => normalizeKeyword(k) === key)?.trim() ?? key;
     return {
       keyword,
       campaigns: ordered.map((c) => ({

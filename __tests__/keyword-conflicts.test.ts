@@ -35,6 +35,13 @@ describe("findKeywordConflicts", () => {
     ]);
   });
 
+  it("reports the keyword without the client's stray spaces", () => {
+    const [conflict] = findKeywordConflicts(campaign({ id: "new", keywords: ["hunter "] }), [campaign({ id: "old", keywords: ["HUNTER"] })]);
+    expect(conflict.keyword).toBe("hunter");
+    const post = campaign({ id: "post", matchAnyPost: false, postId: "1", keywords: [" hunter"] });
+    expect(describeKeywordOverlaps(post, [campaign({ id: "old", keywords: ["HUNTER"] })])[0].keyword).toBe("hunter");
+  });
+
   it("folds accents", () => {
     const candidate = campaign({ id: "new", keywords: ["huntér"] });
     expect(findKeywordConflicts(candidate, [campaign({ id: "old", keywords: ["hunter"] })])).toHaveLength(1);
@@ -120,7 +127,7 @@ describe("describeKeywordOverlaps", () => {
     expect(overlap.winner.id).toBe("reel");
   });
 
-  it("breaks a createdAt tie by id, like the worker's stable order", () => {
+  it("breaks a createdAt tie by id so the report is stable", () => {
     const at = new Date("2026-10-05T00:00:00Z");
     const candidate = campaign({ id: "b", matchAnyPost: false, postId: "1", keywords: ["x"], createdAt: at });
     const [overlap] = describeKeywordOverlaps(candidate, [campaign({ id: "a", keywords: ["x"], createdAt: at })]);
