@@ -51,6 +51,7 @@ export async function GET(request: NextRequest) {
         select: { username: true, instagramId: true },
       },
       createdByServiceKey: { select: { name: true } },
+      lastEditedByServiceKey: { select: { name: true } },
       _count: {
         select: { dmLogs: true },
       },
@@ -338,7 +339,11 @@ export async function PATCH(request: NextRequest) {
     const campaign = await tx.automation.update({
       where: { id: automationId },
       // A panel save makes the person, not a service key, the last editor.
-      data: { ...automationData, lastEditedByServiceKeyId: null },
+      // Switching a campaign on or off is not an edit: the API editor stays
+      // visible, since that is what the person approved.
+      data: Object.keys(automationData).every((key) => key === "isActive")
+        ? automationData
+        : { ...automationData, lastEditedByServiceKeyId: null },
     });
 
     await syncCampaignLinks(tx, {

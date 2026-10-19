@@ -23,7 +23,8 @@ vi.mock("@/lib/workspace-access", () => ({
 }));
 
 import { createCampaign, updateCampaign } from "../lib/integrations/campaign-writes";
-import { PATCH as panelPatch } from "../app/api/automations/route";
+import { GET as panelGet, PATCH as panelPatch } from "../app/api/automations/route";
+import { duplicateCampaign } from "../lib/campaigns/duplicate";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const schema = `integrations_write_${randomBytes(4).toString("hex")}`;
@@ -207,5 +208,29 @@ describe.skipIf(!databaseUrl)("campaign writes on real PostgreSQL", () => {
     const row = await state.db.automation.findUniqueOrThrow({ where: { id: campaign.id } });
     expect(row.lastEditedByServiceKeyId).toBeNull();
     expect(row.createdByServiceKeyId).toBe("key_hermes");
+  });
+
+  it("switching a campaign on in the panel keeps the API editor visible", async () => {
+    const { campaign } = await createCampaign(writer, anyPost("TOGGLE"));
+    await updateCampaign(writer, campaign.id, { dmMessage: "Edited by Hermes" });
+    const listed = await (await panelGet(new NextRequest("http://localhost/api/automations"))).json();
+    expect(listed.data.find((c: { id: string }) => c.id === campaign.id).lastEditedByServiceKey).toEqual({ name: "Hermes" });
+    const res = await panelPatch(new NextRequest(`http://localhost/api/automations?id=${campaign.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive: true }),
+    }));
+    expect(res.status).toBe(200);
+    const row = await state.db.automation.findUniqueOrThrow({ where: { id: campaign.id } });
+    expect(row.isActive).toBe(true);
+    expect(row.lastEditedByServiceKeyId).toBe("key_hermes");
+  });
+
+  it("a panel duplicate is not attributed to the API key", async () => {
+    const { campaign } = await createCampaign(writer, anyPost("DUP"));
+    await updateCampaign(writer, campaign.id, { name: "Edited" });
+    const copy = await duplicateCampaign({ automationId: campaign.id, workspaceId: "workspace" });
+    expect(copy).not.toBeNull();
+    const row = await state.db.automation.findUniqueOrThrow({ where: { id: copy!.id } });
+    expect(row.createdByServiceKeyId).toBeNull();
+    expect(row.lastEditedByServiceKeyId).toBeNull();
   });
 });

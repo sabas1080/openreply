@@ -320,6 +320,8 @@
   "Revoked": "Revogada",
   "Revoke key": "Revogar chave",
   "API · {name}": "API · {name}",
+  "Edited by API · {name}": "Editada pela API · {name}",
+  "This campaign was last edited through the API by {name}. Review it before switching it on. Switch it on now?": "Esta campanha foi editada pela última vez pela API por {name}. Revise-a antes de ativá-la. Ativar agora?",
   "Connection": "Conexão",
   "Streamable HTTP with an Authorization: Bearer header. This server does not provide OAuth; use a client that supports custom headers.": "HTTP com streaming e cabeçalho Authorization: Bearer. Este servidor não oferece OAuth; use um cliente que aceite cabeçalhos personalizados.",
   "Campaign lists are limited to 100. Use get_campaign for complete settings and destination links; clicks are raw requests, not unique recipients.": "As listas de campanhas são limitadas a 100. Use get_campaign para ver todas as configurações e links de destino; os cliques são requisições brutas, não destinatários únicos.",

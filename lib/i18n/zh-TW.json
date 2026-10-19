@@ -320,6 +320,8 @@
   "Revoked": "已撤銷",
   "Revoke key": "撤銷金鑰",
   "API · {name}": "API · {name}",
+  "Edited by API · {name}": "已由 API 編輯 · {name}",
+  "This campaign was last edited through the API by {name}. Review it before switching it on. Switch it on now?": "此行銷活動最後由 {name} 透過 API 編輯。啟用前請先檢查內容。現在要啟用嗎？",
   "Connection": "連線",
   "Streamable HTTP with an Authorization: Bearer header. This server does not provide OAuth; use a client that supports custom headers.": "透過 Authorization: Bearer 標頭使用 Streamable HTTP。此伺服器不提供 OAuth，請使用支援自訂標頭的用戶端。",
   "Campaign lists are limited to 100. Use get_campaign for complete settings and destination links; clicks are raw requests, not unique recipients.": "行銷活動清單最多顯示 100 筆。使用 get_campaign 取得完整設定與目標連結；點擊數為原始請求數，非不重複收件者人數。",

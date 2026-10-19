@@ -41,6 +41,7 @@ interface Campaign {
     instagramId: string;
   };
   createdByServiceKey: { name: string } | null;
+  lastEditedByServiceKey: { name: string } | null;
   reportShareSlug: string | null;
   reportShareEnabled: boolean;
   reportUrl: string | null;
@@ -201,6 +202,16 @@ export default function CampaignsPage() {
   }
 
   async function toggleActive(id: string, isActive: boolean) {
+    const editor = automations.find((a) => a.id === id)?.lastEditedByServiceKey;
+    if (
+      !isActive &&
+      editor &&
+      !window.confirm(
+        t("This campaign was last edited through the API by {name}. Review it before switching it on. Switch it on now?", { name: editor.name })
+      )
+    ) {
+      return;
+    }
     try {
       await fetch(`/api/automations?id=${id}`, {
         method: "PATCH",
@@ -433,6 +444,11 @@ export default function CampaignsPage() {
                   >
                     {auto.isActive ? t("Active") : t("Paused")}
                   </span>
+                  {auto.lastEditedByServiceKey && (
+                    <span className="shrink-0 rounded-full border border-warning/40 px-2 py-0.5 text-xs text-warning">
+                      {t("Edited by API · {name}", { name: auto.lastEditedByServiceKey.name })}
+                    </span>
+                  )}
                   {auto.createdByServiceKey && (
                     <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-muted">
                       {t("API · {name}", { name: auto.createdByServiceKey.name })}

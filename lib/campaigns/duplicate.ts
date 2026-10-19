@@ -65,6 +65,9 @@ export async function duplicateCampaign({
       name: buildDuplicateName(settings.name),
       isActive: false,
       reportShareSlug: generateReportShareSlug(),
+      // A copy made in the panel is the person's, not the service key's.
+      createdByServiceKeyId: null,
+      lastEditedByServiceKeyId: null,
       trackedLinks: {
         // Numbered from the order just read, so the copy's buttons match
         // the original's even if the original's positions have gaps or ties.
