@@ -1,5 +1,6 @@
 export class ApiError extends Error {
-  constructor(message: string, public status = 400) { super(message); }
+  /** `extra` is merged into the JSON error body (validation details, conflicts). */
+  constructor(message: string, public status = 400, public extra?: Record<string, unknown>) { super(message); }
 }
 
 /** Bound streamed bodies too: Content-Length alone is client controlled. */
@@ -36,7 +37,9 @@ export function checkOrigin(request: Request) {
 
 export function apiError(error: unknown) {
   const status = error instanceof ApiError ? error.status : 500;
-  return Response.json({ error: status === 500 ? "Internal error" : (error as Error).message }, {
+  const body = status === 500 ? { error: "Internal error" }
+    : { error: (error as Error).message, ...(error as ApiError).extra };
+  return Response.json(body, {
     status, headers: { "Cache-Control": "no-store" },
   });
 }

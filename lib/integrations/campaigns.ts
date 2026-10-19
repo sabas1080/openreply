@@ -7,6 +7,7 @@ const summarySelect = {
   id: true, name: true, goal: true, instagramAccountId: true, isActive: true,
   postId: true, postUrl: true, pendingNextReel: true, matchAnyPost: true,
   keywords: true, matchAnyWord: true, dmMessage: true, createdAt: true, updatedAt: true,
+  createdByServiceKeyId: true,
 } as const;
 
 export async function listCampaigns(context: ServiceContext) {
@@ -19,8 +20,13 @@ export async function listCampaigns(context: ServiceContext) {
 
 export async function getCampaign(context: ServiceContext, id: string) {
   requireScope(context, "campaigns:read");
+  return readCampaign(context.workspaceId, id);
+}
+
+/** Campaign details without a scope check, for returning what a write just saved. */
+export async function readCampaign(workspaceId: string, id: string) {
   const campaign = await prisma.automation.findFirst({
-    where: { id, workspaceId: context.workspaceId },
+    where: { id, workspaceId },
     select: {
       ...summarySelect, wholeWordMatch: true, dmTriggerEnabled: true,
       openingDmEnabled: true, openingDmMessage: true, openingDmButtonLabel: true,
@@ -28,8 +34,10 @@ export async function getCampaign(context: ServiceContext, id: string) {
       followPromptButtonLabel: true, followUpEnabled: true, followUpMessage: true,
       followUpDelayMinutes: true, publicReplyEnabled: true, publicReplyMessage: true,
       publicReplyMessages: true,
+      createdByServiceKey: { select: { name: true } },
+      lastEditedByServiceKey: { select: { name: true } },
       trackedLinks: {
-        where: { workspaceId: context.workspaceId }, orderBy: TRACKED_LINK_ORDER,
+        where: { workspaceId }, orderBy: TRACKED_LINK_ORDER,
         select: { destinationUrl: true, label: true, position: true },
       },
     },

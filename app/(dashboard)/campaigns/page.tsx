@@ -40,6 +40,7 @@ interface Campaign {
     username: string;
     instagramId: string;
   };
+  createdByServiceKey: { name: string } | null;
   reportShareSlug: string | null;
   reportShareEnabled: boolean;
   reportUrl: string | null;
@@ -432,6 +433,11 @@ export default function CampaignsPage() {
                   >
                     {auto.isActive ? t("Active") : t("Paused")}
                   </span>
+                  {auto.createdByServiceKey && (
+                    <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-muted">
+                      {t("API · {name}", { name: auto.createdByServiceKey.name })}
+                    </span>
+                  )}
                   {auto.pendingNextReel && (
                     <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-warning">
                       {t("Waiting for next reel")}

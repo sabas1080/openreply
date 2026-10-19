@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
       instagramAccount: {
         select: { username: true, instagramId: true },
       },
+      createdByServiceKey: { select: { name: true } },
       _count: {
         select: { dmLogs: true },
       },
@@ -336,7 +337,8 @@ export async function PATCH(request: NextRequest) {
   const updated = await prisma.$transaction(async (tx) => {
     const campaign = await tx.automation.update({
       where: { id: automationId },
-      data: automationData,
+      // A panel save makes the person, not a service key, the last editor.
+      data: { ...automationData, lastEditedByServiceKeyId: null },
     });
 
     await syncCampaignLinks(tx, {

@@ -15,7 +15,7 @@ import { getCampaign } from "../lib/integrations/campaigns";
 import { callTool, listTools } from "../lib/integrations/mcp";
 import { GET as listKeys, POST as createKey, DELETE as revokeKey } from "../app/api/integrations/keys/route";
 import { POST as mcp } from "../app/api/mcp/route";
-import { GET as rest } from "../app/api/v1/campaigns/route";
+import { GET as rest, PATCH as restPatch, POST as restCreate } from "../app/api/v1/campaigns/route";
 
 const token = `orp_${"a".repeat(43)}`;
 const key = { id: "key", workspaceId: "workspace", scopes: ["campaigns:read"], expiresAt: new Date("2099-01-01"), revokedAt: null };
@@ -165,5 +165,38 @@ describe("request boundaries", () => {
     await expect(readJson(request({ padding: "x".repeat(65536) }))).rejects.toMatchObject({ status: 413 });
     await expect(readJson(request({}, { "content-type": "text/plain" }))).rejects.toMatchObject({ status: 415 });
     await expect(readJson(new Request("https://example.test", { method: "POST", headers: { "content-type": "application/json" }, body: "{" }))).rejects.toMatchObject({ status: 400 });
+  });
+});
+
+describe("campaign write routes", () => {
+  const body = JSON.stringify({ name: "x", matchAnyPost: true, keywords: ["X"], dmMessage: "hi" });
+  it("require a Bearer key before reading the body", async () => {
+    const response = await restCreate(new Request("https://example.test/api/v1/campaigns", { method: "POST", headers: { "content-type": "application/json" }, body }));
+    expect(response.status).toBe(401);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(state.keys.findUnique).not.toHaveBeenCalled();
+  });
+  it("require a JSON body", async () => {
+    const response = await restCreate(new Request("https://example.test/api/v1/campaigns", { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "text/plain" }, body }));
+    expect(response.status).toBe(415);
+  });
+  it("refuse a read-only key with the missing scope", async () => {
+    const response = await restCreate(new Request("https://example.test/api/v1/campaigns", { method: "POST", headers, body }));
+    expect(response.status).toBe(403);
+    expect((await response.json()).error).toBe("Missing scope: campaigns:write");
+  });
+  it("need a campaign id to update", async () => {
+    state.keys.findUnique.mockResolvedValue({ ...key, scopes: ["campaigns:write"] });
+    const response = await restPatch(new Request("https://example.test/api/v1/campaigns", { method: "PATCH", headers, body: "{}" }));
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe("Campaign id required");
+  });
+  it("return validation details as JSON", async () => {
+    state.keys.findUnique.mockResolvedValue({ ...key, scopes: ["campaigns:write"] });
+    const response = await restCreate(new Request("https://example.test/api/v1/campaigns", { method: "POST", headers, body: JSON.stringify({ name: "x", isActive: true }) }));
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.error).toBe("Invalid input");
+    expect(json.details.fieldErrors.dmMessage).toBeDefined();
   });
 });

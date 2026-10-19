@@ -319,6 +319,7 @@
   "Expires: {date}": "Expira em: {date}",
   "Revoked": "Revogada",
   "Revoke key": "Revogar chave",
+  "API · {name}": "API · {name}",
   "Connection": "Conexão",
   "Streamable HTTP with an Authorization: Bearer header. This server does not provide OAuth; use a client that supports custom headers.": "HTTP com streaming e cabeçalho Authorization: Bearer. Este servidor não oferece OAuth; use um cliente que aceite cabeçalhos personalizados.",
   "Campaign lists are limited to 100. Use get_campaign for complete settings and destination links; clicks are raw requests, not unique recipients.": "As listas de campanhas são limitadas a 100. Use get_campaign para ver todas as configurações e links de destino; os cliques são requisições brutas, não destinatários únicos.",
