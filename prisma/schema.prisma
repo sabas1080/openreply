@@ -115,6 +115,8 @@ model ServiceKey {
   createdAt   DateTime  @default(now())
   lastUsedAt  DateTime?
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdCampaigns    Automation[] @relation("CampaignCreatedByKey")
+  lastEditedCampaigns Automation[] @relation("CampaignLastEditedByKey")
 
   @@index([workspaceId])
 }
@@ -221,6 +223,10 @@ model Automation {
   wholeWordMatch Boolean @default(true)
   reportShareSlug    String? @unique
   reportShareEnabled Boolean @default(true)
+  // Service key that created / last edited the campaign through the API.
+  // Null for campaigns made in the panel; a panel edit clears the editor.
+  createdByServiceKeyId    String?
+  lastEditedByServiceKeyId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -230,10 +236,13 @@ model Automation {
   dmLogs           DmLog[]
   trackedLinks     TrackedLink[]
   linkClicks       LinkClick[]
+  createdByServiceKey    ServiceKey? @relation("CampaignCreatedByKey", fields: [createdByServiceKeyId], references: [id], onDelete: SetNull)
+  lastEditedByServiceKey ServiceKey? @relation("CampaignLastEditedByKey", fields: [lastEditedByServiceKeyId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId])
   @@index([instagramAccountId])
   @@index([postId])
+  @@index([createdByServiceKeyId])
 }
 
 model DmLog {

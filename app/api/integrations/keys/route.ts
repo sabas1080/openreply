@@ -2,6 +2,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/client";
 import { canManageWorkspace, getCurrentWorkspaceContext } from "@/lib/workspace-access";
 import { hashServiceToken, newServiceToken, SERVICE_SCOPES } from "@/lib/integrations/auth";
+import { SERVICE_KEY_LIFETIMES } from "@/lib/integrations/scopes";
 import { apiError, ApiError, checkOrigin, readJson } from "@/lib/integrations/http";
 
 const safeFields = { id: true, name: true, scopes: true, createdAt: true, expiresAt: true, revokedAt: true, lastUsedAt: true } as const;
@@ -18,8 +19,8 @@ export async function POST(request: Request) {
     checkOrigin(request);
     const context = await getCurrentWorkspaceContext();
     if (!context || !canManageWorkspace(context.role)) throw new ApiError("Admin role required", 403);
-    const input = z.object({ name: z.string().trim().min(1).max(100), scopes: z.array(z.enum(SERVICE_SCOPES)).min(1).max(1),
-      days: z.number().int().min(1).max(90).default(30) }).strict().safeParse(await readJson(request));
+    const input = z.object({ name: z.string().trim().min(1).max(100), scopes: z.array(z.enum(SERVICE_SCOPES)).min(1).max(SERVICE_SCOPES.length * 2),
+      days: z.union(SERVICE_KEY_LIFETIMES.map(days => z.literal(days))).default(30) }).strict().safeParse(await readJson(request));
     if (!input.success) throw new ApiError("Invalid key configuration");
     const token = newServiceToken();
     const key = await prisma.serviceKey.create({ data: { name: input.data.name, scopes: [...new Set(input.data.scopes)],

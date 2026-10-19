@@ -65,7 +65,7 @@ describe("service authentication", () => {
 });
 
 describe("key management", () => {
-  it.each([30, 60, 90])("creates a %i-day key with safe one-time output", async days => {
+  it.each([30, 60, 90, 180, 365])("creates a %i-day key with safe one-time output", async days => {
     const before = Date.now();
     const response = await createKey(request({ name: "Reader", scopes: ["campaigns:read"], days }));
     expect(response.status).toBe(201);
@@ -84,7 +84,7 @@ describe("key management", () => {
     expect((await createKey(request({ name: "Reader", scopes: ["campaigns:read"] }))).status).toBe(201);
     expect(state.keys.create.mock.calls[0][0].data.expiresAt.getTime()).toBeGreaterThanOrEqual(before + 30 * 86400000);
   });
-  it.each([0, 91, 365, 1.5])("rejects lifetime %s", async days => {
+  it.each([0, 91, 120, 366, 1.5])("rejects lifetime %s", async days => {
     expect((await createKey(request({ name: "Reader", scopes: ["campaigns:read"], days }))).status).toBe(400);
     expect(state.keys.create).not.toHaveBeenCalled();
   });
@@ -94,7 +94,14 @@ describe("key management", () => {
     expect((await createKey(request({}))).status).toBe(403);
     expect((await revokeKey(new Request("https://example.test/api/integrations/keys?id=key"))).status).toBe(403);
   });
-  it("rejects write scopes and foreign Origins", async () => {
+  it("stores several campaign scopes once each", async () => {
+    expect((await createKey(request({ name: "Agent", scopes: ["campaigns:read", "campaigns:write", "campaigns:read"] }))).status).toBe(201);
+    expect(state.keys.create.mock.calls[0][0].data.scopes).toEqual(["campaigns:read", "campaigns:write"]);
+    expect((await createKey(request({ name: "Owner", scopes: ["campaigns:read", "campaigns:write", "campaigns:activate"] }))).status).toBe(201);
+    expect(state.keys.create.mock.calls[1][0].data.scopes).toEqual(["campaigns:read", "campaigns:write", "campaigns:activate"]);
+  });
+  it("rejects unknown or empty scopes and foreign Origins", async () => {
+    expect((await createKey(request({ name: "Reader", scopes: [] }))).status).toBe(400);
     expect((await createKey(request({ name: "Reader", scopes: ["drafts:write"] }))).status).toBe(400);
     expect((await createKey(request({}, { origin: "https://evil.test" }))).status).toBe(403);
     expect(state.keys.create).not.toHaveBeenCalled();

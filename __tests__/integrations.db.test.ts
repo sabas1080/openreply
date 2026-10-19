@@ -24,25 +24,28 @@ describe.skipIf(!databaseUrl)("read-only integrations on real PostgreSQL", () =>
     await sql.query(`CREATE SCHEMA "${schema}"`);
     await sql.query(`SET search_path TO "${schema}"`);
     const root = path.join(__dirname, "..", "prisma", "migrations");
-    const dirs = readdirSync(root, { withFileTypes: true }).filter(d => d.isDirectory()).sort((a, b) => a.name.localeCompare(b.name));
-    for (const dir of dirs.filter(d => d.name !== "20261003120000_workspace_service_keys")) {
-      await sql.query(readFileSync(path.join(root, dir.name, "migration.sql"), "utf8"));
-    }
+    const KEY_MIGRATION = "20261003120000_workspace_service_keys";
+    const dirs = readdirSync(root, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort((a, b) => a.localeCompare(b));
+    const apply = async (names: string[]) => {
+      for (const name of names) await sql.query(readFileSync(path.join(root, name, "migration.sql"), "utf8"));
+    };
+    await apply(dirs.filter(name => name < KEY_MIGRATION));
     state.db = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }, { schema }) });
     await state.db.user.create({ data: { id: "owner", email: "integration@example.test" } });
     for (const id of ["workspace", "other"]) {
       await state.db.workspace.create({ data: { id, name: id, ownerId: "owner" } });
       await state.db.instagramAccount.create({ data: { id: `account_${id}`, workspaceId: id, instagramId: id, username: id, accessToken: "local-only-secret" } });
     }
-    await state.db.automation.create({ data: {
-      id: "campaign", workspaceId: "workspace", instagramAccountId: "account_workspace", name: "Example",
-      keywords: ["LINK"], dmMessage: "Your link", isActive: true, openingDmEnabled: true,
-      openingDmMessage: "Tap below", openingDmButtonLabel: "Open", reportShareSlug: "private-report",
-    } });
-    await state.db.automation.create({ data: { id: "foreign", workspaceId: "other", instagramAccountId: "account_other", name: "Other", keywords: [], dmMessage: "Private", isActive: false } });
-    const before = await state.db.automation.findMany({ orderBy: { id: "asc" } });
-    await sql.query(readFileSync(path.join(root, "20261003120000_workspace_service_keys", "migration.sql"), "utf8"));
-    expect(await state.db.automation.findMany({ orderBy: { id: "asc" } })).toEqual(before);
+    // Raw SQL: the generated client already knows columns that later migrations add.
+    await sql.query(`INSERT INTO "Automation" ("id", "workspaceId", "instagramAccountId", "name", "keywords", "dmMessage", "isActive",
+      "openingDmEnabled", "openingDmMessage", "openingDmButtonLabel", "reportShareSlug", "updatedAt") VALUES
+      ('campaign', 'workspace', 'account_workspace', 'Example', ARRAY['LINK'], 'Your link', true, true, 'Tap below', 'Open', 'private-report', now()),
+      ('foreign', 'other', 'account_other', 'Other', ARRAY[]::text[], 'Private', false, false, NULL, NULL, NULL, now())`);
+    const snapshot = async () => (await sql.query(`SELECT * FROM "Automation" ORDER BY "id"`)).rows;
+    const before = await snapshot();
+    await apply([KEY_MIGRATION]);
+    expect(await snapshot()).toEqual(before);
+    await apply(dirs.filter(name => name > KEY_MIGRATION));
     const date = new Date("2026-01-01");
     for (const [id, label, workspaceId] of [["b", "Second", "workspace"], ["a", "First", "workspace"], ["foreign-link", "Hidden", "other"]]) {
       await state.db.trackedLink.create({ data: { id, label, workspaceId, automationId: "campaign", slug: id, destinationUrl: `https://example.test/${id}`, position: 0, createdAt: date } });
