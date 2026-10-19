@@ -109,9 +109,15 @@ most recently connected account). Unknown fields are rejected with 400 and
 - `isActive` in a PATCH needs `campaigns:activate`.
 - A key without `campaigns:activate` cannot edit a live campaign (409); pause it
   in the panel first.
-- An any-post campaign cannot use a keyword (compared like the matcher: case,
-  spacing, symbols and Latin accents ignored) that another any-post campaign of
-  the same account already uses, paused or not. The answer is 409:
+- A key without `campaigns:activate` cannot change the destination URLs of a
+  campaign that has already sent DMs (409): the buttons in delivered DMs keep
+  using those links, active or not.
+- An any-post campaign cannot use a keyword that another any-post campaign of
+  the same account already answers to, paused or not. Keywords are compared
+  like the matcher compares comments (case, spacing, symbols and Latin accents
+  ignored), and a keyword that contains another one counts too: `hunter cat`
+  collides with a whole-word `HUNTER`, and `catsniffer` with a partial-match
+  `cat`. The answer is 409:
 
 ```json
 { "error": "Keyword already used by another any-post campaign",
@@ -123,7 +129,8 @@ first, so other overlaps (an any-post campaign and a post campaign with the
 same word) are allowed but only one of them sends the DM. Every write answers
 `{ "data": <campaign>, "keywordOverlaps": [...] }`, where each overlap lists the
 campaigns that answer that keyword on the same comments, oldest first, and the
-`winner` whose DM goes out.
+`winner` whose DM goes out when the campaigns are active (the worker skips
+paused ones). Each matching campaign still posts its own public reply.
 
 ```sh
 curl -sS -X POST https://YOUR-DOMAIN/api/v1/campaigns \
@@ -133,9 +140,12 @@ curl -sS -X POST https://YOUR-DOMAIN/api/v1/campaigns \
        "trackedDestinationUrl":"https://example.com/hunter"}'
 ```
 
-Campaigns record which key created and last edited them; the panel shows
-"API · <key name>" on campaigns a key created, and a save in the panel clears
-the last API editor.
+Campaigns record which key created and last edited them. The campaign list
+shows "API · <key name>" on campaigns a key created and "Edited by API ·
+<key name>" on campaigns a key changed last, and asks for confirmation before
+switching the latter on. A save in the panel clears the last API editor;
+switching a campaign on or off does not, and a duplicate is not attributed to
+the key.
 
 ## Verification
 
