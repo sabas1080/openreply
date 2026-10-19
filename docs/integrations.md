@@ -124,6 +124,9 @@ most recently connected account). Unknown fields are rejected with 400 and
   "conflicts": [{ "keyword": "hunter", "campaign": { "id": "...", "name": "...", "isActive": false } }] }
 ```
 
+Creates and keyword edits of one workspace run one at a time; a save that
+waits more than 3 seconds for another answers 503 and can be retried.
+
 Instagram allows one private reply per comment and campaigns are tried oldest
 first, so other overlaps (an any-post campaign and a post campaign with the
 same word) are allowed but only one of them sends the DM. Every write answers
