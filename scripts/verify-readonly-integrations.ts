@@ -47,18 +47,29 @@ try {
   assert.equal((await fetch(`${base}/api/v1/campaigns`, { headers })).status, 200);
   assert.equal((await fetch(`${base}/api/v1/campaigns`)).status, 401);
   assert.equal((await fetch(`${base}/api/v1/campaigns?id=not-this-workspace`, { headers })).status, 404);
-  assert.equal((await fetch(`${base}/api/v1/campaigns`, { method: "POST", headers, body: "{}" })).status, 405);
+  // A read-only key cannot write.
+  assert.equal((await fetch(`${base}/api/v1/campaigns`, { method: "POST", headers, body: "{}" })).status, 403);
   assert.equal((await rpc("tools/call", { name: "create_draft", arguments: {} })).isError, true);
   assert.equal((await fetch(`${base}/api/mcp`, { method: "POST", headers: { ...headers, origin: "https://evil.test" }, body: "{}" })).status, 403);
   assert.equal((await fetch(`${base}/api/mcp`, { method: "POST", headers, body: JSON.stringify({ padding: "x".repeat(65536) }) })).status, 413);
   assert.equal((await db.automation.findUniqueOrThrow({ where: { id: campaign.id } })).isActive, false);
+  // A write key creates paused campaigns, refuses a reused any-post keyword and cannot activate.
+  await db.serviceKey.update({ where: { id: serviceKey.id }, data: { scopes: ["campaigns:read", "campaigns:write"] } });
+  const body = JSON.stringify({ name: "HTTP write", matchAnyPost: true, keywords: ["WRITE"], dmMessage: "Local test" });
+  const created = await fetch(`${base}/api/v1/campaigns`, { method: "POST", headers, body });
+  assert.equal(created.status, 201);
+  const written = (await created.json()).data;
+  assert.equal(written.isActive, false);
+  assert.equal((await fetch(`${base}/api/v1/campaigns`, { method: "POST", headers, body })).status, 409);
+  assert.equal((await fetch(`${base}/api/v1/campaigns?id=${written.id}`, { method: "PATCH", headers, body: JSON.stringify({ isActive: true }) })).status, 403);
+  assert.equal((await db.automation.findUniqueOrThrow({ where: { id: written.id } })).isActive, false);
   await db.serviceKey.update({ where: { id: serviceKey.id }, data: { scopes: [] } });
   assert.equal((await fetch(`${base}/api/v1/campaigns`, { headers })).status, 403);
   await db.serviceKey.update({ where: { id: serviceKey.id }, data: { revokedAt: new Date() } });
   assert.equal((await fetch(`${base}/api/v1/campaigns`, { headers })).status, 401);
   await db.serviceKey.update({ where: { id: serviceKey.id }, data: { revokedAt: null, expiresAt: new Date(0) } });
   assert.equal((await fetch(`${base}/api/v1/campaigns`, { headers })).status, 401);
-  console.log("PASS: real local HTTP MCP/REST, DB/Redis authentication, scoped details, boundaries, revocation and expiry; no messages sent.");
+  console.log("PASS: real local HTTP MCP/REST, DB/Redis authentication, scoped details, paused writes, boundaries, revocation and expiry; no messages sent.");
 } finally {
   await db.user.deleteMany({ where: { id: ownerId } });
   await db.$disconnect();
