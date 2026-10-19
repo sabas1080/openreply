@@ -36,6 +36,7 @@ export type CampaignWriteResult = {
 const TRIGGER_FIELDS = [
   "keywords",
   "matchAnyWord",
+  "wholeWordMatch",
   "matchAnyPost",
   "pendingNextReel",
   "postId",
@@ -167,6 +168,7 @@ export async function updateCampaign(
         pendingNextReel: true,
         postId: true,
         matchAnyWord: true,
+        wholeWordMatch: true,
         keywords: true,
         instagramAccountId: true,
       },
@@ -177,6 +179,21 @@ export async function updateCampaign(
         "Campaign is active; deactivate it in the panel before editing it through the API",
         409
       );
+    }
+
+    // The buttons of DMs already delivered keep pointing at these links, so
+    // moving them changes what people are sent to without anyone approving it.
+    const movesLinks =
+      (links.primaryUrl !== undefined && links.primaryUrl !== null) ||
+      (links.secondaryUrl !== undefined && links.secondaryUrl !== null);
+    if (movesLinks && !canActivate) {
+      const delivered = await tx.dmLog.count({ where: { automationId: id, workspaceId } });
+      if (delivered > 0) {
+        throw new ApiError(
+          "Campaign has already sent DMs; changing its links needs campaigns:activate or the panel",
+          409
+        );
+      }
     }
 
     const { instagramAccountId, ...current } = existing;

@@ -137,6 +137,20 @@ describe.skipIf(!databaseUrl)("campaign writes on real PostgreSQL", () => {
     expect(edited.lastEditedByServiceKey).toEqual({ name: "Owner" });
   });
 
+  it("a write key cannot repoint links already sent in DMs; an activate key can", async () => {
+    const { campaign } = await createCampaign(writer, anyPost("SENT", { trackedDestinationUrl: "https://example.test/old" }));
+    await state.db.dmLog.create({ data: {
+      workspaceId: "workspace", automationId: campaign.id, instagramAccountId: "account_workspace",
+      commenterId: "c1", commentText: "sent", commentId: "comment_1", status: "SENT",
+    } });
+    await expect(updateCampaign(writer, campaign.id, { trackedDestinationUrl: "https://example.test/new" })).rejects.toMatchObject({ status: 409 });
+    await expect(updateCampaign(writer, campaign.id, { secondaryDestinationUrl: "https://example.test/2" })).rejects.toMatchObject({ status: 409 });
+    const { campaign: text } = await updateCampaign(writer, campaign.id, { dmMessage: "Future DMs only" });
+    expect(text.trackedDestinationUrl).toBe("https://example.test/old");
+    const { campaign: moved } = await updateCampaign(owner, campaign.id, { trackedDestinationUrl: "https://example.test/new" });
+    expect(moved.trackedDestinationUrl).toBe("https://example.test/new");
+  });
+
   it("refuses an any-post keyword another any-post campaign uses, paused or not", async () => {
     const { campaign: first } = await createCampaign(writer, anyPost("HUNTER"));
     const error = await createCampaign(writer, anyPost("hunter")).catch((e) => e);
