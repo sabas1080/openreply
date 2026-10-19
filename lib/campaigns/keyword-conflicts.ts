@@ -1,5 +1,5 @@
 import type { Prisma } from "@/app/generated/prisma/client";
-import { normalizeKeyword } from "@/lib/utils/keyword-matcher";
+import { matchKeywords, normalizeKeyword } from "@/lib/utils/keyword-matcher";
 
 // Meta allows one private reply per comment, and the DM worker tries matching
 // campaigns oldest first (createdAt asc). So two campaigns that can fire on
@@ -15,6 +15,7 @@ export type CampaignTrigger = {
   pendingNextReel: boolean;
   postId: string | null;
   matchAnyWord: boolean;
+  wholeWordMatch: boolean;
   keywords: string[];
 };
 
@@ -44,8 +45,30 @@ const TRIGGER_SELECT = {
   pendingNextReel: true,
   postId: true,
   matchAnyWord: true,
+  wholeWordMatch: true,
   keywords: true,
 } as const;
+
+/**
+ * Two keywords answer the same comments when they are equal, or when a
+ * comment made of one would match the other ("hunter cat" contains the word
+ * "hunter"; "catsniffer" contains a partial-match "cat").
+ */
+function keywordsOverlap(
+  a: string,
+  aWholeWord: boolean,
+  b: string,
+  bWholeWord: boolean
+) {
+  const normalA = normalizeKeyword(a);
+  const normalB = normalizeKeyword(b);
+  if (normalA === "" || normalB === "") return false;
+  return (
+    normalA === normalB ||
+    matchKeywords(a, [b], bWholeWord).matched ||
+    matchKeywords(b, [a], aWholeWord).matched
+  );
+}
 
 /** Keyword of `candidate` that `other` also answers to; null for any-word. */
 function sharedKeyword(
@@ -55,11 +78,11 @@ function sharedKeyword(
   if (candidate.matchAnyWord || other.matchAnyWord) {
     return { shared: true, keyword: null };
   }
-  const theirs = new Set(other.keywords.map(normalizeKeyword).filter(Boolean));
-  const keyword = candidate.keywords.find((k) => {
-    const normal = normalizeKeyword(k);
-    return normal !== "" && theirs.has(normal);
-  });
+  const keyword = candidate.keywords.find((mine) =>
+    other.keywords.some((theirs) =>
+      keywordsOverlap(mine, candidate.wholeWordMatch, theirs, other.wholeWordMatch)
+    )
+  );
   return keyword === undefined
     ? { shared: false, keyword: null }
     : { shared: true, keyword };

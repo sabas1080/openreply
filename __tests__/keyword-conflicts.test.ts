@@ -14,6 +14,7 @@ const campaign = (over: Partial<CampaignTrigger> & { id: string }): CampaignTrig
   pendingNextReel: false,
   postId: null,
   matchAnyWord: false,
+  wholeWordMatch: true,
   keywords: [],
   ...over,
 });
@@ -53,6 +54,26 @@ describe("findKeywordConflicts", () => {
     expect(findKeywordConflicts(anyWord, [campaign({ id: "old", keywords: ["x"] })])).toHaveLength(1);
   });
 
+  it("finds a keyword that contains another campaign's keyword as a word", () => {
+    // Every "hunter cat" comment also matches HUNTER, so one campaign never DMs.
+    const older = campaign({ id: "old", keywords: ["HUNTER"] });
+    expect(findKeywordConflicts(campaign({ id: "new", keywords: ["hunter cat"] }), [older])).toEqual([
+      { keyword: "hunter cat", campaign: { id: "old", name: "old", isActive: true } },
+    ]);
+    const longer = campaign({ id: "old", keywords: ["hunter cat"] });
+    expect(findKeywordConflicts(campaign({ id: "new", keywords: ["HUNTER"] }), [longer])).toHaveLength(1);
+  });
+
+  it("finds a partial-match keyword inside a longer word", () => {
+    const partial = campaign({ id: "old", keywords: ["cat"], wholeWordMatch: false });
+    expect(findKeywordConflicts(campaign({ id: "new", keywords: ["catsniffer"] }), [partial])).toHaveLength(1);
+  });
+
+  it("does not treat a whole-word keyword as part of a longer word", () => {
+    const whole = campaign({ id: "old", keywords: ["cat"] });
+    expect(findKeywordConflicts(campaign({ id: "new", keywords: ["catsniffer"] }), [whole])).toEqual([]);
+  });
+
   it("ignores campaigns bound to a post or the next reel", () => {
     const candidate = campaign({ id: "new", keywords: ["hunter"] });
     const others = [
@@ -77,6 +98,12 @@ describe("describeKeywordOverlaps", () => {
     expect(overlap.keyword).toBe("hunter");
     expect(overlap.winner).toEqual({ id: "any", name: "any" });
     expect(overlap.campaigns.map((c) => [c.id, c.trigger])).toEqual([["any", "any_post"], ["post", "post"]]);
+  });
+
+  it("reports a post campaign whose keyword contains an older any-post keyword", () => {
+    const candidate = campaign({ id: "post", matchAnyPost: false, postId: "1", keywords: ["hunter cat"], createdAt: new Date("2026-10-18T00:00:00Z") });
+    const [overlap] = describeKeywordOverlaps(candidate, [campaign({ id: "any", keywords: ["HUNTER"] })]);
+    expect(overlap).toMatchObject({ keyword: "hunter cat", winner: { id: "any" } });
   });
 
   it("does not overlap campaigns bound to different posts", () => {
