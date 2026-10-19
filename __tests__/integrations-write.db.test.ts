@@ -129,6 +129,24 @@ describe.skipIf(!databaseUrl)("campaign writes on real PostgreSQL", () => {
     expect(on.isActive).toBe(true);
   });
 
+  it("a write key loses to an activation that lands while it is saving", async () => {
+    const { campaign } = await createCampaign(writer, anyPost("RACEON"));
+    // The panel switches the campaign on in a transaction that is still open.
+    const panel = new Client({ connectionString: databaseUrl });
+    await panel.connect();
+    await panel.query(`SET search_path TO "${schema}"`);
+    await panel.query("BEGIN");
+    await panel.query(`UPDATE "Automation" SET "isActive" = true WHERE id = $1`, [campaign.id]);
+    const edit = updateCampaign(writer, campaign.id, { dmMessage: "Edited while it went live" }).then(
+      () => 200, (error: { status?: number }) => error.status ?? 500);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await panel.query("COMMIT");
+    await panel.end();
+    expect(await edit).toBe(409);
+    const row = await state.db.automation.findUniqueOrThrow({ where: { id: campaign.id } });
+    expect(row.dmMessage).toBe("Here is the link");
+  });
+
   it("a write key cannot edit an active campaign; an activate key can", async () => {
     const { campaign } = await createCampaign(writer, anyPost("LIVE"));
     await state.db.automation.update({ where: { id: campaign.id }, data: { isActive: true } });
@@ -180,6 +198,21 @@ describe.skipIf(!databaseUrl)("campaign writes on real PostgreSQL", () => {
       expect(results.sort(), `round ${round}`).toEqual([201, 409]);
     }
   });
+
+  it("answers 503 instead of hanging when another save holds the keyword lock", async () => {
+    const other = new Client({ connectionString: databaseUrl });
+    await other.connect();
+    await other.query("SELECT pg_advisory_lock(hashtext('openreply:campaign-keywords:workspace'))");
+    try {
+      const started = Date.now();
+      const error = await createCampaign(writer, anyPost("LOCKED")).catch((e) => e);
+      expect(error.status).toBe(503);
+      expect(Date.now() - started).toBeLessThan(6_000);
+    } finally {
+      await other.end();
+    }
+    expect((await createCampaign(writer, anyPost("LOCKED"))).campaign.name).toBe("Any LOCKED");
+  }, 15_000);
 
   it("reports which campaign's DM goes out when a post campaign shares a keyword", async () => {
     const { campaign: older } = await createCampaign(writer, anyPost("SHARED"));

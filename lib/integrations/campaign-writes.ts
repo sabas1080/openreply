@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/db/client";
 import {
@@ -42,16 +43,42 @@ const TRIGGER_FIELDS = [
   "postId",
 ] as const;
 
-function invalid(error: { flatten: () => unknown }) {
-  return new ApiError("Invalid input", 400, { details: error.flatten() });
+const ACTIVE_CAMPAIGN_ERROR = () =>
+  new ApiError(
+    "Campaign is active; deactivate it in the panel before editing it through the API",
+    409
+  );
+
+function invalid(error: z.ZodError) {
+  return new ApiError("Invalid input", 400, { details: z.flattenError(error) });
 }
 
-/** One writer at a time per workspace, so two saves cannot both take a keyword. */
+/**
+ * One writer at a time per workspace, so two saves cannot both take a keyword.
+ * The wait is bounded: a waiting save holds one of the few pooled connections
+ * the webhook and link redirects also need.
+ */
 async function lockWorkspaceKeywords(
   tx: Prisma.TransactionClient,
   workspaceId: string
 ) {
-  await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${`openreply:campaign-keywords:${workspaceId}`}))`;
+  await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = '${LOCK_WAIT}'`);
+  try {
+    await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${`openreply:campaign-keywords:${workspaceId}`}))`;
+  } catch (error) {
+    if (isLockTimeout(error)) {
+      throw new ApiError("Another campaign save is in progress; retry in a few seconds", 503);
+    }
+    throw error;
+  }
+}
+
+const LOCK_WAIT = "3s";
+
+/** Postgres lock_not_available (55P03), however the driver adapter wraps it. */
+function isLockTimeout(error: unknown) {
+  const text = `${(error as { meta?: { code?: string } })?.meta?.code ?? ""} ${(error as Error)?.message ?? ""}`;
+  return text.includes("55P03") || text.includes("lock timeout");
 }
 
 function refuseConflicts(candidate: CampaignTrigger, others: CampaignTrigger[]) {
@@ -174,12 +201,7 @@ export async function updateCampaign(
       },
     });
     if (!existing) throw new ApiError("Campaign not found", 404);
-    if (existing.isActive && !canActivate) {
-      throw new ApiError(
-        "Campaign is active; deactivate it in the panel before editing it through the API",
-        409
-      );
-    }
+    if (existing.isActive && !canActivate) throw ACTIVE_CAMPAIGN_ERROR();
 
     // The buttons of DMs already delivered keep pointing at these links, so
     // moving them changes what people are sent to without anyone approving it.
@@ -223,10 +245,13 @@ export async function updateCampaign(
       refuseConflicts(merged, others);
     }
 
-    await tx.automation.update({
-      where: { id },
+    // Re-checked by the write itself: a panel activation that commits while
+    // this save waits on the row lock makes the condition fail here.
+    const { count } = await tx.automation.updateMany({
+      where: { id, workspaceId, ...(canActivate ? {} : { isActive: false }) },
       data: { ...automationData, lastEditedByServiceKeyId: context.keyId },
     });
+    if (count === 0) throw ACTIVE_CAMPAIGN_ERROR();
     await syncCampaignLinks(tx, { workspaceId, automationId: id, ...links });
     return describeKeywordOverlaps(merged, others);
   });
