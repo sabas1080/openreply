@@ -156,6 +156,19 @@ export function foldDiacritics(text: string): string {
 }
 
 /**
+ * A keyword in the form matchKeywords compares it: special characters
+ * stripped, Latin diacritics and Arabic-script variants folded, lower case,
+ * and the O/0 fold for numeric-like keywords. Two keywords with the same
+ * normalised form fire on the same comments.
+ */
+export function normalizeKeyword(keyword: string): string {
+  const cleaned = foldDiacritics(
+    stripSpecialCharacters(normalizeArabicScript(keyword))
+  ).toLowerCase();
+  return isNumericLikeKeyword(cleaned) ? foldNumericHomoglyphs(cleaned) : cleaned;
+}
+
+/**
  * Check if a comment text matches any of the given keywords.
  *
  * Both sides are stripped of special characters and folded for Latin
