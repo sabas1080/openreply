@@ -161,6 +161,14 @@ describe("request boundaries", () => {
     expect(() => checkOrigin(request({}))).not.toThrow();
     expect(() => checkOrigin(request({}, { origin: "https://evil.test" }))).toThrow("Origin not allowed");
   });
+  it("accepts the extra panel origins listed in ALLOWED_ORIGINS", () => {
+    vi.stubEnv("ALLOWED_ORIGINS", "https://example.test:8443, https://panel.example.test");
+    expect(() => checkOrigin(request({}, { origin: "https://example.test:8443" }))).not.toThrow();
+    expect(() => checkOrigin(request({}, { origin: "https://panel.example.test" }))).not.toThrow();
+    expect(() => checkOrigin(request({}, { origin: "https://example.test" }))).not.toThrow();
+    expect(() => checkOrigin(request({}, { origin: "https://example.test:9443" }))).toThrow("Origin not allowed");
+    expect(() => checkOrigin(request({}, { origin: "https://evil.test" }))).toThrow("Origin not allowed");
+  });
   it("bounds chunked JSON independent of Content-Length", async () => {
     await expect(readJson(request({ padding: "x".repeat(65536) }))).rejects.toMatchObject({ status: 413 });
     await expect(readJson(request({}, { "content-type": "text/plain" }))).rejects.toMatchObject({ status: 415 });

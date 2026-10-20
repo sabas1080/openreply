@@ -32,7 +32,9 @@ export function checkOrigin(request: Request) {
   const origin = request.headers.get("origin");
   if (!origin) return;
   const expected = new URL(process.env.NEXTAUTH_URL ?? request.url).origin;
-  if (origin !== expected) throw new ApiError("Origin not allowed", 403);
+  // A panel served on another origin than NEXTAUTH_URL (e.g. a private port) lists it here.
+  const extra = (process.env.ALLOWED_ORIGINS ?? "").split(",").map(value => value.trim()).filter(Boolean);
+  if (origin !== expected && !extra.includes(origin)) throw new ApiError("Origin not allowed", 403);
 }
 
 export function apiError(error: unknown) {

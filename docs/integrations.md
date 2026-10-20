@@ -86,7 +86,9 @@ scope returns 403, rate limits return 429. Results are `Cache-Control: no-store`
 
 Admin key management uses session authentication at `/api/integrations/keys`:
 GET lists metadata (never hashes/tokens), POST creates a key, DELETE with `?id=`
-revokes it. A supplied Origin must match `NEXTAUTH_URL` (or the request origin).
+revokes it. A supplied Origin must match `NEXTAUTH_URL` (or the request origin)
+or one of the comma-separated origins in `ALLOWED_ORIGINS`, for a panel served on
+another origin such as a private port (`https://host:8443`).
 JSON request bodies are bounded to 64 KiB including streamed/chunked requests.
 
 ## Writing campaigns
